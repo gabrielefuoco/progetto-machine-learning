@@ -1,4 +1,6 @@
 #experiments with autoencoder generated features
+import warnings
+warnings.filterwarnings('ignore')
 
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import KFold
@@ -9,8 +11,10 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import roc_curve, auc
 from sklearn.multiclass import OneVsRestClassifier
-from sklearn import svm
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn import svm
+# from sklearn.ensemble import RandomForestClassifier
+from cuml import svm
+from cuml.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -70,9 +74,11 @@ for clf_name in  clfs:
         clf = []
         if(clf_name == "SVM"):
             print("Classifier: ", clf_name)
+            # clf = OneVsRestClassifier(svm.SVC(kernel = 'linear', random_state = seed_value, probability = True))
             clf = OneVsRestClassifier(svm.SVC(kernel = 'linear', random_state = seed_value, probability = True))
         if(clf_name == "RF"):
             print("Classifier: ", clf_name)
+            # clf = OneVsRestClassifier(RandomForestClassifier(n_estimators = 10, random_state = seed_value))
             clf = OneVsRestClassifier(RandomForestClassifier(n_estimators = 10, random_state = seed_value))
         if(clf_name == "NB"):
             print("Classifier: ", clf_name)
@@ -86,12 +92,16 @@ for clf_name in  clfs:
         for train_index, test_index in skf_idxs:
             print("fold: ", foldCounter)
             #print("TRAIN:", train_index, "TEST:", test_index)
-            X_train, X_test = [X[i] for i in train_index], [X[j] for j in test_index]
+            # Convert to numpy arrays (float32) for cuML
+            X_train = np.array([X[i] for i in train_index], dtype=np.float32)
+            X_test = np.array([X[j] for j in test_index], dtype=np.float32)
+            
             Y_train, Y_test = [Y[i] for i in train_index], [Y[j] for j in test_index]
             Y_test_normal = [Y_normal[j] for j in test_index]
-            Y_train = MultiLabelBinarizer().fit_transform(Y_train)
+            Y_train = MultiLabelBinarizer().fit_transform(Y_train).astype(np.float32)
             Y_test_all_normal.extend(Y_test_normal)
-            Y_test = MultiLabelBinarizer().fit_transform(Y_test)
+            Y_test = MultiLabelBinarizer().fit_transform(Y_test).astype(np.float32)
+            
             clf.fit(X_train, Y_train)
             y_score = clf.predict_proba(X_test)
             # Why am i concatenating all k-fold data?? https://stackoverflow.com/questions/26587759/plotting-precision-recall-curve-when-using-cross-validation-in-scikit-learn
@@ -127,9 +137,13 @@ print(dmauc)
 colors = ['navy', 'turquoise', 'darkorange']
 sns.set_palette(colors)
 # save mauc barplot for tau. 
-fig = sns.factorplot(x='Classifier', y='MAUC', hue='group', data=dmauc, kind='bar')
+import os
+os.makedirs("results/consolidated", exist_ok=True)
+fig = sns.catplot(x='Classifier', y='MAUC', hue='group', data=dmauc, kind='bar')
 plt.title('Model performance for latent space dimension = ' + str(latentVecDim))
-fig.savefig("results/consolidated/ldim" + str(latentVecDim) + "_MAUC.png")
+output_path = "results/consolidated/ldim" + str(latentVecDim) + "_MAUC.png"
+fig.savefig(output_path)
+print(f"[SUCCESS] Grafico salvato in: {output_path}")
 
 consolidated_results = open("results/consolidated/numeric_ldim" + str(latentVecDim) + "_MAUC.txt","w")
 

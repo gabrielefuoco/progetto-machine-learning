@@ -3,10 +3,12 @@ import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
+# We use sklearn's OneVsRestClassifier because cuML's wrapper has issues with predict_proba
 from sklearn.multiclass import OneVsRestClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.naive_bayes import GaussianNB
+# from cuml.multiclass import OneVsRestClassifier
+from cuml.ensemble import RandomForestClassifier
+from cuml.svm import SVC
+from cuml.naive_bayes import GaussianNB
 from sklearn.preprocessing import MultiLabelBinarizer
 
 # Importiamo MAUC originale

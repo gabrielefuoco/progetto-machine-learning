@@ -60,8 +60,16 @@ if not os.path.exists('./results'): os.makedirs('./results')  # create results d
 #ori_dataset = pd.read_csv('./data/fraud_dataset_v2.csv')
 
 # load the synthetic ERP dataset
-url = 'https://raw.githubusercontent.com/GitiHubi/deepAI/master/data/fraud_dataset_v2.csv'
-ori_dataset = pd.read_csv(url)
+# load the synthetic ERP dataset
+# Modifica per usare il file locale scaricato da reproduce_baseline.py se esiste
+local_csv = 'data/fraud_dataset_v2.csv'
+if os.path.exists(local_csv):
+    print(f"[GenerateDatasets] Loading local dataset: {local_csv}")
+    ori_dataset = pd.read_csv(local_csv)
+else:
+    url = 'https://raw.githubusercontent.com/GitiHubi/deepAI/master/data/fraud_dataset_v2.csv'
+    print(f"[GenerateDatasets] Downloading from URL: {url}")
+    ori_dataset = pd.read_csv(url)
 
 # remove the "ground-truth" label information for the following steps of the lab
 label = ori_dataset.pop('label')
@@ -90,7 +98,8 @@ fig.savefig("output.png")
 # select categorical attributes to be "one-hot" encoded
 categorical_attr_names = ['KTOSL', 'PRCTR', 'BSCHL', 'HKONT', 'BUKRS', 'WAERS']
 # encode categorical attributes into a binary one-hot encoded representation 
-ori_dataset_categ_transformed = pd.get_dummies(ori_dataset[categorical_attr_names])
+# Use sparse=True to save memory (approx 2.5GB for dense vs <100MB for sparse)
+ori_dataset_categ_transformed = pd.get_dummies(ori_dataset[categorical_attr_names], sparse=True)
 
 ## PRE-PROCESSING of NUMERICAL TRANSACTION ATTRIBUTES:  In order to faster approach a potential global minimum it is good practice to scale and normalize numerical input values prior to network training
 # select "DMBTR" vs. "WRBTR" attribute
@@ -103,6 +112,7 @@ ori_dataset_numeric_attr = (numeric_attr - numeric_attr.min()) / (numeric_attr.m
 
 ## merge cat and num atts
 # merge categorical and numeric subsets
+# sparse=True ensures we don't blow up memory here
 ori_subset_transformed = pd.concat([ori_dataset_categ_transformed, ori_dataset_numeric_attr], axis = 1)
 
 ## PRETRAINED MODEL RESTORATION
@@ -117,32 +127,8 @@ radius = 0.8
 sigma = 0.01
 # define the dimensionality of each gaussian
 dim = latentVecDim
-# determine x and y coordinates of the target mixture of gaussians
-centroids_dim_n = []
-for i in range(0, latentVecDim):
-    if i%2 == 0: #if i is an even dim, then
-        centroids_dim_n.append((radius * np.cos(np.linspace(0, 2 * np.pi, tau, endpoint=False)) + 1) / 2)
-    else:
-        centroids_dim_n.append((radius * np.sin(np.linspace(0, 2 * np.pi, tau, endpoint=False)) + 1) / 2)
-#print(centroids_dim_n)
-#x_centroid = (radius * np.sin(np.linspace(0, 2 * np.pi, tau, endpoint=False)) + 1) / 2
-#y_centroid = (radius * np.cos(np.linspace(0, 2 * np.pi, tau, endpoint=False)) + 1) / 2
-# determine each gaussians mean (centroid) and standard deviation
-mu_gauss = np.vstack(centroids_dim_n).T
-# determine the number of samples to be created per gaussian
-samples_per_gaussian = 100000
-# iterate over the number of distinct gaussians
-for i, mu in enumerate(mu_gauss):
-    # case: first gaussian
-    if i == 0:
-        # randomly sample from gaussion distribution 
-        z_continous_samples_all = np.random.normal(mu, sigma, size=(samples_per_gaussian, dim))
-    # case: non-first gaussian
-    else:
-        # randomly sample from gaussian distribution
-        z_continous_samples = np.random.normal(mu, sigma, size=(samples_per_gaussian, dim))
-        # collect and stack new samples
-        z_continous_samples_all = np.vstack([z_continous_samples_all, z_continous_samples])
+
+# REMOVED DEAD CODE: Synthetic gaussian sampling was not used in output and consumed memory.
 
 # restore pretrained model checkpoint
 encoder_model_name = 'https://github.com/jcssilva4/deep_learning_proj1/blob/master/models/10_20_20191231-22_36_34_ep_5000_encoder_model.pth?raw=true'
@@ -166,22 +152,8 @@ if (torch.backends.cudnn.version() != None) and (USE_CUDA == True):
     decoder_eval = decoder_eval.cuda()
     
 # load trained models
-# since the model was trained on a gpu and will be restored in a cpu we need to provide: map_location = 'cpu'
 encoder_eval.load_state_dict(torch.load(encoder_buffer, map_location = 'cpu')) 
 decoder_eval.load_state_dict(torch.load(decoder_buffer, map_location = 'cpu')) 
-
-## specify a dataloader that provides the ability to evaluate the journal entrie in an "unshuffled" batch-wise manner:
-# convert pre-processed data to pytorch tensor
-torch_dataset = torch.from_numpy(ori_subset_transformed.values).float()
-
-# convert to pytorch tensor - none cuda enabled
-dataloader_eval = DataLoader(torch_dataset, batch_size=mini_batch_size, shuffle=False, num_workers=0)
-
-# determine if CUDA is available at the compute node
-if (torch.backends.cudnn.version() != None) and (USE_CUDA == True):
-    
-    # push dataloader to CUDA
-    dataloader_eval = DataLoader(torch_dataset.cuda(), batch_size=mini_batch_size, shuffle=False)
 
 # VISUALIZE LATENT SPACE REPRESETATION
 # set networks in evaluation mode (don't apply dropout)
@@ -190,30 +162,35 @@ decoder_eval.eval()
 
 # init batch count
 batch_count = 0
+z_enc_transactions_list = []
 
-# iterate over epoch mini batches
-for enc_transactions_batch in dataloader_eval:
-
-    # determine latent space representation of all transactions
-    z_enc_transactions_batch = encoder_eval(enc_transactions_batch)
+# iterate manually in batches to avoid dense conversion of the whole dataset
+# This fixes the OOM crash on low-memory environments
+total_rows = len(ori_subset_transformed)
+for i in range(0, total_rows, mini_batch_size):
+    batch_df = ori_subset_transformed.iloc[i : i + mini_batch_size]
     
-    # case: initial batch 
-    if batch_count == 0:
-
-      # collect reconstruction errors of batch
-      z_enc_transactions_all = z_enc_transactions_batch
-      
-    # case: non-initial batch
-    else:
-      
-      # collect reconstruction errors of batch
-      z_enc_transactions_all = torch.cat((z_enc_transactions_all, z_enc_transactions_batch), dim=0)
+    # Convert sparse/mixed batch to dense numpy then tensor
+    # .values on sparse df block converts to dense automatically for the slice
+    batch_np = batch_df.values.astype(float) 
+    enc_transactions_batch = torch.from_numpy(batch_np).float()
     
-    # increase batch count
+    if (torch.backends.cudnn.version() != None) and (USE_CUDA == True):
+        enc_transactions_batch = enc_transactions_batch.cuda()
+
+    # determine latent space representation
+    # wrap in no_grad to save memory for gradients
+    with torch.no_grad():
+        z_enc_transactions_batch = encoder_eval(enc_transactions_batch)
+    
+    z_enc_transactions_list.append(z_enc_transactions_batch.cpu())
+    
     batch_count += 1
+    if batch_count % 100 == 0:
+        print(f"Processed batch {batch_count} / {total_rows // mini_batch_size}")
 
-# convert to numpy array
-z_enc_transactions_all = z_enc_transactions_all.cpu().detach().numpy()
+# convert to numpy array efficiently
+z_enc_transactions_all = torch.cat(z_enc_transactions_list, dim=0).numpy()
 
 
 

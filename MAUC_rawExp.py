@@ -1,4 +1,6 @@
 #experiments with original features
+import warnings
+warnings.filterwarnings('ignore')
 
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import KFold
@@ -9,8 +11,10 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import roc_curve, auc
 from sklearn.multiclass import OneVsRestClassifier
-from sklearn import svm
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn import svm
+# from sklearn.ensemble import RandomForestClassifier
+from cuml import svm
+from cuml.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 from itertools import cycle
 from scipy import interp
@@ -67,7 +71,8 @@ fig.savefig("output.png")
 # select categorical attributes to be "one-hot" encoded
 categorical_attr_names = ['KTOSL', 'PRCTR', 'BSCHL', 'HKONT', 'BUKRS', 'WAERS']
 # encode categorical attributes into a binary one-hot encoded representation 
-ori_dataset_categ_transformed = pd.get_dummies(ori_dataset[categorical_attr_names])
+# Use sparse=True to save memory
+ori_dataset_categ_transformed = pd.get_dummies(ori_dataset[categorical_attr_names], sparse=True)
 
 ## PRE-PROCESSING of NUMERICAL TRANSACTION ATTRIBUTES:  In order to faster approach a potential global minimum it is good practice to scale and normalize numerical input values prior to network training
 # select "DMBTR" vs. "WRBTR" attribute
@@ -80,9 +85,11 @@ ori_dataset_numeric_attr = (numeric_attr - numeric_attr.min()) / (numeric_attr.m
 
 ## merge cat and num atts
 # merge categorical and numeric subsets
+# sparse=True ensures we don't blow up memory here
 ori_subset_transformed = pd.concat([ori_dataset_categ_transformed, ori_dataset_numeric_attr], axis = 1)
 #initialize X, Y
-X = ori_subset_transformed.to_numpy() #convert df to numpy array
+# Convert to dense float32 (saving 50% vs float64) just before usage
+X = ori_subset_transformed.values.astype(np.float32) 
 Y = []
 Y_normal = []
 for y in label:
@@ -95,6 +102,8 @@ for y in label:
 	if y == "local":
 		Y.append([2])
 		Y_normal.extend([2])
+Y = np.array(Y, dtype=np.float32) # Convert to numpy for efficient slicing
+Y_normal = np.array(Y_normal, dtype=np.float32)
 clss = [0, 1, 2]
 
 all_tau = [5, 10, 20] 
@@ -130,9 +139,11 @@ for clf_name in  clfs:
         clf = []
         if(clf_name == "SVM"):
             print("Classifier: ", clf_name)
+            # clf = OneVsRestClassifier(svm.SVC(kernel = 'linear', random_state = seed_value, probability = True))
             clf = OneVsRestClassifier(svm.SVC(kernel = 'linear', random_state = seed_value, probability = True))
         if(clf_name == "RF"):
             print("Classifier: ", clf_name)
+            # clf = OneVsRestClassifier(RandomForestClassifier(n_estimators = 10, random_state = seed_value))
             clf = OneVsRestClassifier(RandomForestClassifier(n_estimators = 10, random_state = seed_value))
         if(clf_name == "NB"):
             print("Classifier: ", clf_name)
@@ -145,13 +156,14 @@ for clf_name in  clfs:
         Y_score_all = [] # concatenated y_scores of all folds
         for train_index, test_index in skf_idxs:
             print("fold: ", foldCounter)
-            #print("TRAIN:", train_index, "TEST:", test_index)
-            X_train, X_test = [X[i] for i in train_index], [X[j] for j in test_index]
-            Y_train, Y_test = [Y[i] for i in train_index], [Y[j] for j in test_index]
-            Y_test_normal = [Y_normal[j] for j in test_index]
-            Y_train = MultiLabelBinarizer().fit_transform(Y_train)
+            # Efficient numpy slicing instead of list comprehension
+            X_train, X_test = X[train_index], X[test_index]
+            Y_train, Y_test = Y[train_index], Y[test_index]
+            Y_test_normal = Y_normal[test_index]
+            
+            Y_train = MultiLabelBinarizer().fit_transform(Y_train).astype(np.float32)
             Y_test_all_normal.extend(Y_test_normal)
-            Y_test = MultiLabelBinarizer().fit_transform(Y_test)
+            Y_test = MultiLabelBinarizer().fit_transform(Y_test).astype(np.float32)
             clf.fit(X_train, Y_train)
             y_score = clf.predict_proba(X_test)
             # Why am i concatenating all k-fold data?? https://stackoverflow.com/questions/26587759/plotting-precision-recall-curve-when-using-cross-validation-in-scikit-learn
