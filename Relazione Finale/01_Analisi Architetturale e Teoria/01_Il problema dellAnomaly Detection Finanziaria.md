@@ -1,0 +1,15 @@
+# Il problema dell'Anomaly Detection Finanziaria
+
+Il contesto operativo e le sfide peculiari legate alla rilevazione di frodi in ambito finanziario sono dominate dalle limitazioni degli approcci tradizionali e dalla necessità di metodologie avanzate basate su Deep Learning.
+
+La frode contabile e finanziaria rappresenta una minaccia asimmetrica per le organizzazioni moderne. A differenza di anomalie fisiche (come guasti in macchinari industriali), che seguono pattern di degrado progressivo e prevedibile, le frodi sono generate da attori razionali che modificano attivamente il proprio comportamento per eludere i sistemi di controllo. Questo scenario configura un ambiente "avversario" in cui la distribuzione dei dati è intrinsecamente dinamica e non stazionaria.
+
+Le sfide principali che rendono questo task particolarmente arduo per i sistemi di classificazione supervisionata tradizionali possono essere riassunte in tre macro-categorie:
+
+1.  **Sbilanciamento Estremo delle Classi (Class Imbalance)**: Nei dataset finanziari reali, le transazioni fraudolente sono eventi rari, spesso costituendo meno dello 0.1% del volume totale. Nel dataset in esame, ad esempio, su oltre mezzo milione di transazioni, le frodi rappresentano una frazione minuscola. Questo sbilanciamento porta i classificatori standard a massimizzare l'accuratezza banale predicendo sempre la classe maggioritaria (tutto regolare), fallendo però nell'obiettivo critico di intercettare l'anomalia (basso Recall).
+2.  **Eterogeneità dei Dati**: I log finanziari ERP (Enterprise Resource Planning) sono complessi e misti, contenenti sia variabili categoriche ad alta cardinalità (codici conto, causali, valute) sia variabili numeriche continue (importi, timestamp). L'efficace fusione di queste tipologie di dati richiede preprocessing dedicati (come Embedding o One-Hot Encoding) che esplodono la dimensionalità dello spazio delle feature, rendendo difficile l'individuazione di pattern lineari.
+3.  **Adversarial Nature**: Come anticipato, l'anomalia finanziaria non è un semplice *outlier* statistico (un dato lontano dalla media), ma spesso si presenta come una transazione che mima le caratteristiche di legittimità nelle singole feature marginarli, rivelando la sua natura fraudolenta solo attraverso correlazioni complesse e non lineari tra variabili multiple (anomalie strutturali).
+
+Di fronte a tali complessità, gli approcci basati su regole (Rule-based) o su modelli lineari semplici risultano inadeguati, producendo un elevato tasso di falsi positivi o mancando completamente frodi sofisticate. L'adozione di architetture di Deep Learning non supervisionate o semi-supervisionate, come gli Autoencoder, mira ad apprendere la complessa topologia della "normalità" dai dati leciti abbondanti, per poi identificare le frodi per contrasto, come eventi che violano la struttura appresa dello spazio latente @schreyer2017detection.
+
+In sintesi, il problema non è solo classificare, ma "comprendere" la struttura profonda delle transazioni lecite per isolare ciò che, pur sembrando normale in superficie, tradisce una deviazione strutturale profonda.

@@ -156,14 +156,27 @@ Di seguito un confronto dettagliato tra gli obiettivi originali del progetto e l
 #### C. Analisi della Stabilità del Training
 > *Obiettivo: Analizzare le curve di apprendimento (Reconstruction, Generator, Discriminator Loss) per verificare la convergenza ed evitare il vanishing gradient.*
 
-*   **Stato**: ⏳ **DA FARE**
-*   **Piano**: Creare uno script `train_stability.py` che esegua training multipli dell'AAE registrando le loss step-by-step per generare grafici di convergenza.
+*   **Stato**: ✅ **COMPLETATO**
+*   **Esperimento**: Eseguite **5 run indipendenti** (`N=5`) dell'AAE con `tau=10`, per 50 epoche ciascuna.
+*   **Risultati**:
+    *   **Convergenza**: La `Reconstruction Loss` converge in modo estremamente coerente in tutte e 5 le run, stabilizzandosi nel range **0.0037 - 0.0044**.
+    *   **Dinamica Avversariale**: La `Discriminator Loss` e la `Generator Loss` mostrano la classica oscillazione delle GAN, stabilizzandosi (Disc ~1.2, Gen ~0.9) senza segni di collasso del gradiente o divergenza.
+    *   **Affidabilità**: La bassa varianza tra le run (evidente nei grafici `results/stability/loss_curves.png`) conferma che il modello è robusto e l'addestramento è stabile sui dati forniti.
 
 #### D. Studio dell’Imbalance
 > *Obiettivo: Stress test del modello riducendo artificialmente la percentuale di campioni anomali.*
 
-*   **Stato**: ⏳ **DA FARE**
-*   **Piano**: Implementare `imbalance_study.py` per ri-addestrare i modelli su dataset con rateo di frodi decrescente (es. 50%, 25%, 10% dei casi originali) e misurare la degradazione del MAUC.
+*   **Stato**: ✅ **COMPLETATO**
+*   **Esperimento**: Testato l'AAE su ratei di frode decrescenti dallo 0.1% al 10%.
+*   **Risultati**:
+    | Fraud Ratio | Reconstruction AUC | Note |
+    |---|---|---|
+    | 0.1% | 0.7830 | Ottima performance nonostante l'estrema scarsità |
+    | 1.0% | 0.7760 | Stabile |
+    | **2.0%** | **0.8005** | **Picco di performance** |
+    | 5.0% | 0.7218 | Declino (Pollution) |
+    | 10.0% | 0.7125 | Declino marcato |
+*   **Analisi**: Il modello soffre di "pollution" quando le frodi superano il 2%. Essendo un modello non supervisionato, se le frodi sono troppo frequenti, l'Autoencoder inizia a imparare a ricostruirle correttamente, riducendo l'errore di ricostruzione e quindi la capacità di distinguerle.
 
 ## 5. Deviazioni e Adattamenti Tecnici rispetto al Piano
 

@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "title": "Relazione Finale",
+    "author": "Author Name",
+    "date": "2026-02-03",
+    "version": "0.1.0"
+  },
+  "order": [
+    "01_Analisi Architetturale e Teoria",
+    "02_Il Progetto Originale Baseline",
+    "03_Estensione e Metodologia",
+    "04_Analisi dei Risultati e Discussione",
+    "05_Conclusioni",
+    "06_Appendici"
+  ],
+  "compilation": {
+    "pandoc_extensions": "+tex_math_dollars",
+    "shift_heading_level": 1,
+    "page_break_before_chapter": true,
+    "typst_template": "default_thesis",
+    "heading_numbering": "none"
+  }
+}
